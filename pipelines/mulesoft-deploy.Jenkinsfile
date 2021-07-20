@@ -32,6 +32,11 @@ pipeline {
           ## APPLICATION_REPOSITORY = ${APPLICATION_REPOSITORY}
           ## APPLICATION_BRANCH = ${APPLICATION_BRANCH}
           ##
+          ## CLOUDHUB_ENVIRONMENT = ${CLOUDHUB_ENVIRONMENT}
+          ## CLOUDHUB_WORKER_SIZE = ${CLOUDHUB_WORKER_SIZE}
+          ## BUSINESS_GROUP_ID = ${BUSINESS_GROUP_ID}
+          ## CLOUDHUB_VERIFY_DEPLOYMENT = ${CLOUDHUB_VERIFY_DEPLOYMENT}
+          ##
           ## #################################################################################################
           """
         }
@@ -56,6 +61,22 @@ pipeline {
     stage('Upload package') {
       steps {
         echo 'Upload artifact to package repository'
+      }
+    }
+
+    stage('Deploy to Cloudhub') {
+      steps {
+        script {
+          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots -DskipMunitTests"
+          MAVEN_DEPLOYMENT_PARAMETERS = "-Dmule.version=${MULE_VERSION} -Danypoint.username=${ANYPOINT_USERNAME} -Danypoint.password=${ANYPOINT_PASSWORD} -Dcloudhub.applicationName=${APPLICATION_NAME} -Dcloudhub.environment=${CLOUDHUB_ENVIRONMENT} -Dcloudhub.worker=${CLOUDHUB_WORKER_SIZE} -Dcloudhub.businessGroup=${BUSINESS_GROUP_ID} -Dcloudhub.verifyDeployment=${CLOUDHUB_VERIFY_DEPLOYMENT}"
+          sh "mvn ${MAVEN_PARAMETERS} deploy -DmuleDeploy ${MAVEN_DEPLOYMENT_PARAMETERS}"
+        }
+      }
+    }
+
+    stage('Notify result') {
+      steps {
+        echo 'Notify build result'
       }
     }
 
