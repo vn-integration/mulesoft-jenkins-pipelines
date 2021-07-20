@@ -7,6 +7,7 @@ pipeline {
   }
 
   environment {
+    BUILDER = "jenkins"
   }
 
   stages {
