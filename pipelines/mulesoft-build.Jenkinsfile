@@ -15,14 +15,9 @@ pipeline {
     stage('Setup environment') {
       steps {
         script {
-          // echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-          // sh 'java -version'
-          // echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-
           if (ENV == null) {
              error "ENV parameter is null"
           }
-
           if (APPLICATION_NAME == null) {
              error "APPLICATION_NAME parameter is null"
           }
@@ -44,22 +39,22 @@ pipeline {
 
     stage('Checkout code') {
       steps {
-        git branch: APPLICATION_BRANCH, url: APPLICATION_REPOSITORY
+        git credentialsId: 'GITEA_CREDENTIALS', branch: APPLICATION_BRANCH, url: APPLICATION_REPOSITORY
       }
     }
 
     stage('Build and test application') {
       steps {
         script {
-          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots -DskipMunitTests"
-          sh "mvn ${MAVEN_PARAMETERS} clean package"
+          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots"
+          sh "mvn ${MAVEN_PARAMETERS} clean package -Dtest.runCoverage=true"
         }
       }
     }
 
     stage('Sonarqube analysis') {
       steps {
-        withSonarQubeEnv('Sonarqube local') {
+        withSonarQubeEnv('sonar-mule') {
           sh "mvn sonar:sonar -Dsonar.projectKey=${APPLICATION_NAME} -Dsonar.sources=."
         }
       }
@@ -80,12 +75,36 @@ pipeline {
       }
     }
 
+    // stage('Deploy to Cloudhub') {
+    //   steps {
+    //     script {
+    //       MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots"
+    //       DEPLOYMENT_PARAMETERS = "-Dcloudhub.username=${ANYPOINT_USERNAME} -Dcloudhub.password=${ANYPOINT_PASSWORD} -Dcloudhub.environment=${CLOUDHUB_ENVIRONMENT} -Dcloudhub.businessGroupId=${BUSINESS_GROUP_ID} -Dapp.workers=1 -Dapp.workerType=MICRO -Dcloudhub.skipDeploymentVerification=false -Dproject.name=${APPLICATION_NAME}"
+    //       sh "mvn ${MAVEN_PARAMETERS} ${DEPLOYMENT_PARAMETERS} deploy -DmuleDeploy -DskipMunitTests -Dtest.runCoverage=false"
+    //     }
+    //   }
+    // }
+
     stage('Notify result') {
       steps {
         echo 'Notify build result'
       }
     }
-
   }
 
+  post {
+    always {
+      junit 'target/surefire-reports/*.xml'
+
+      publishHTML (target : [
+        allowMissing: false,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: 'target/site/munit/coverage',
+        reportFiles: 'summary.html',
+        reportName: 'Coverage report',
+        reportTitles: 'Coverage report'
+      ])
+    }
+  }
 }

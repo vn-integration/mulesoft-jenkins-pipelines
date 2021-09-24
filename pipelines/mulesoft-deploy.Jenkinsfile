@@ -18,7 +18,6 @@ pipeline {
           if (ENV == null) {
              error "ENV parameter is null"
           }
-
           if (APPLICATION_NAME == null) {
              error "APPLICATION_NAME parameter is null"
           }
@@ -35,7 +34,7 @@ pipeline {
           ## CLOUDHUB_ENVIRONMENT = ${CLOUDHUB_ENVIRONMENT}
           ## CLOUDHUB_WORKER_SIZE = ${CLOUDHUB_WORKER_SIZE}
           ## BUSINESS_GROUP_ID = ${BUSINESS_GROUP_ID}
-          ## CLOUDHUB_VERIFY_DEPLOYMENT = ${CLOUDHUB_VERIFY_DEPLOYMENT}
+          ## CLOUDHUB_SKIP_VERIFY_DEPLOYMENT = ${CLOUDHUB_SKIP_VERIFY_DEPLOYMENT}
           ##
           ## #################################################################################################
           """
@@ -43,34 +42,10 @@ pipeline {
       }
     }
 
-    // stage('Checkout code') {
-    //   steps {
-    //     git branch: APPLICATION_BRANCH, url: APPLICATION_REPOSITORY
-    //   }
-    // }
-
-    // stage('Build and test application') {
-    //   steps {
-    //     script {
-    //       MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots -DskipMunitTests"
-
-    //       sh "mvn ${MAVEN_PARAMETERS} clean package"
-    //     }
-    //   }
-    // }
-
-    // stage('Sonarqube analysis') {
-    //   steps {
-    //     withSonarQubeEnv('Sonarqube local') {
-    //       MAVEN_SONAR_PARAMETERS = "-Dsonar.projectKey=${APPLICATION_NAME} -Dsonar.sources=."
-
-    //       sh "mvn sonar:sonar ${MAVEN_SONAR_PARAMETERS}"
-    //     }
-    //   }
-    // }
-
     stage('Retrieve artifact') {
       steps {
+        // TODO: Retrieve from Nexus
+        git credentialsId: 'GITEA_CREDENTIALS', branch: APPLICATION_BRANCH, url: APPLICATION_REPOSITORY
         echo 'Download artifact from package repository'
       }
     }
@@ -78,10 +53,9 @@ pipeline {
     stage('Deploy to Cloudhub') {
       steps {
         script {
-          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots -DskipMunitTests"
-          MAVEN_DEPLOYMENT_PARAMETERS = "-Dmule.version=${MULE_VERSION} -Danypoint.username=${ANYPOINT_USERNAME} -Danypoint.password=${ANYPOINT_PASSWORD} -Dcloudhub.applicationName=${APPLICATION_NAME} -Dcloudhub.environment=${CLOUDHUB_ENVIRONMENT} -Dcloudhub.worker=${CLOUDHUB_WORKER_SIZE} -Dcloudhub.businessGroup=${BUSINESS_GROUP_ID} -Dcloudhub.verifyDeployment=${CLOUDHUB_VERIFY_DEPLOYMENT}"
-
-          sh "mvn ${MAVEN_PARAMETERS} deploy -DmuleDeploy ${MAVEN_DEPLOYMENT_PARAMETERS}"
+          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots"
+          DEPLOYMENT_PARAMETERS = "-Dcloudhub.username=${ANYPOINT_USERNAME} -Dcloudhub.password=${ANYPOINT_PASSWORD} -Dcloudhub.environment=${CLOUDHUB_ENVIRONMENT} -Dcloudhub.businessGroupId=${BUSINESS_GROUP_ID} -Dapp.workers=1 -Dapp.workerType=MICRO -Dcloudhub.skipDeploymentVerification=${CLOUDHUB_SKIP_VERIFY_DEPLOYMENT} -Dproject.name=${APPLICATION_NAME}"
+          sh "mvn ${MAVEN_PARAMETERS} ${DEPLOYMENT_PARAMETERS} deploy -DmuleDeploy -DskipMunitTests -Dtest.runCoverage=false"
         }
       }
     }
