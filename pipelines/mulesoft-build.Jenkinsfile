@@ -22,14 +22,19 @@ pipeline {
              error "APPLICATION_NAME parameter is null"
           }
 
+          SKIP_TESTS = env.SKIP_TESTS ?: false
+          SKIP_COVERAGE = env.SKIP_COVERAGE ?: false
+          APPLICATION_BRANCH = env.APPLICATION_BRANCH ?: "development"
+
           echo """
           ## Pipeline parameters #############################################################################
           ##
           ## ENV = ${ENV}
-          ## MULE_VERSION = ${MULE_VERSION}
           ## APPLICATION_NAME = ${APPLICATION_NAME}
           ## APPLICATION_REPOSITORY = ${APPLICATION_REPOSITORY}
           ## APPLICATION_BRANCH = ${APPLICATION_BRANCH}
+          ## SKIP_TESTS = ${SKIP_TESTS}
+          ## SKIP_COVERAGE = ${SKIP_COVERAGE}
           ##
           ## #################################################################################################
           """
@@ -46,31 +51,38 @@ pipeline {
     stage('Build and test application') {
       steps {
         script {
-          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots"
-          sh "mvn ${MAVEN_PARAMETERS} clean package -Dtest.runCoverage=true"
+          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --update-snapshots"
+          MAVEN_PARAMETERS = MAVEN_PARAMETERS + (SKIP_TESTS ? " -DskipMunitTests" : "")
+          MAVEN_PARAMETERS = MAVEN_PARAMETERS + (SKIP_COVERAGE ? " -Dtest.runCoverage=false" : " -Dtest.runCoverage=true")
+
+          sh "mvn ${MAVEN_PARAMETERS} clean package"
         }
       }
     }
 
-    stage('Sonarqube analysis') {
+    stage('SonarQube analysis') {
       steps {
+        script {
+          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --update-snapshots"
+        }
         withSonarQubeEnv('sonar-mule') {
-          sh "mvn sonar:sonar -Dsonar.projectKey=${APPLICATION_NAME} -Dsonar.sources=."
+          sh "mvn ${MAVEN_PARAMETERS} sonar:sonar -Dsonar.projectKey=${APPLICATION_NAME} -Dsonar.sources=."
         }
       }
     }
 
     stage('Upload artifact') {
       steps {
-        // script {
-        //   MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots -DskipMunitTests"
-        //   // MAVEN_NEXUS_PARAMETERS = "-DrepositoryId=nexus-maia -Durl=$common_properties.NEXUS_BASE_URL/repository/$repo -Dfile=target/$JAR_FILE -DpomFile=pom.xml"
-        //   MAVEN_NEXUS_PARAMETERS = "-Durl=http://nexus:8081/repository/maven-snapshots -Dfile=target/${APPLICATION_NAME}.jar"
-        //   sh "mvn ${MAVEN_PARAMETERS} deploy:deploy-file ${MAVEN_NEXUS_PARAMETERS}"
+        script {
+          MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --update-snapshots"
+          MAVEN_PARAMETERS = MAVEN_PARAMETERS + " -DskipMunitTests -Dtest.runCoverage=false"
 
-        //   // mvn --no-transfer-progress -batch-mode --errors --show-version --update-snapshots -D"skipMunitTests" deploy:deploy-file -D"url=http://localhost:18081/repository/mulesoft-snapshots/" -D"file=target/mule-application-template-1.0.0-mule-application.jar" -D"pomFile=pom.xml" -D"repo.id=mulesoft-snapshots" -D"repo.login=jenkins" -D"repo.pwd=jenkins"
-        //   // mvn --no-transfer-progress -batch-mode --errors --show-version --update-snapshots -D"skipMunitTests" deploy:deploy-file -D"url=http://localhost:18081/repository/mulesoft-snapshots/" -D"file=target/mule-application-template-1.0.0-mule-application.jar" -D"pomFile=pom.xml"
-        // }
+          APP_VERSION = sh (script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true)
+          APP_ARTIFACT_ID = sh (script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout", returnStdout: true)
+          MAVEN_NEXUS_PARAMETERS = "-Durl=http://nexus:8081/repository/mule-poc-snapshots/ -Dfile=target/${APPLICATION_NAME}-${APP_VERSION}-mule-application.jar -DpomFile=pom.xml"
+
+          sh "mvn ${MAVEN_PARAMETERS} deploy:deploy-file ${MAVEN_NEXUS_PARAMETERS}"
+        }
         echo 'Upload artifact to package repository'
       }
     }
@@ -78,10 +90,18 @@ pipeline {
     // stage('Deploy to Cloudhub') {
     //   steps {
     //     script {
-    //       MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --show-version --update-snapshots"
+    //       MAVEN_PARAMETERS = "--no-transfer-progress -batch-mode --errors --update-snapshots"
     //       DEPLOYMENT_PARAMETERS = "-Dcloudhub.username=${ANYPOINT_USERNAME} -Dcloudhub.password=${ANYPOINT_PASSWORD} -Dcloudhub.environment=${CLOUDHUB_ENVIRONMENT} -Dcloudhub.businessGroupId=${BUSINESS_GROUP_ID} -Dapp.workers=1 -Dapp.workerType=MICRO -Dcloudhub.skipDeploymentVerification=false -Dproject.name=${APPLICATION_NAME}"
     //       sh "mvn ${MAVEN_PARAMETERS} ${DEPLOYMENT_PARAMETERS} deploy -DmuleDeploy -DskipMunitTests -Dtest.runCoverage=false"
     //     }
+    //   }
+    // }
+
+    // stage ('Call deploy job') {
+    //   steps {
+    //     build job: "${APPLICATION_NAME}-deploy", parameters: [[
+    //       $class: 'StringParameterValue', name: 'env', value: 'DEV'
+    //     ]]
     //   }
     // }
 
